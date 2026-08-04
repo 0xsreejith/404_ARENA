@@ -1,0 +1,84 @@
+:root {
+  --bg: #07070A;
+  --surface: #11131A;
+  --card: #181B22;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --accent: #7CFF4F;
+  --accent-glow: rgba(124, 255, 79, 0.25);
+  --warning: #FFB020;
+  --warning-glow: rgba(255, 176, 32, 0.25);
+  --danger: #FF4444;
+  --danger-glow: rgba(255, 68, 68, 0.3);
+  --info: #4DA3FF;
+  --text-primary: #E8EAF0;
+  --text-muted: rgba(232, 234, 240, 0.45);
+  --font-heading: 'Chakra Petch', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-body: 'Barlow', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Scoped to live-floor / counter panels — Owner Web uses owner.css for body. */
+.cyber-surface {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+.font-heading { font-family: var(--font-heading); }
+.font-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.text-accent { color: var(--accent); }
+.text-warning { color: var(--warning); }
+.text-danger { color: var(--danger); }
+.text-info { color: var(--info); }
+.text-muted { color: var(--text-muted); }
+
+/* Buttons */
+.btn-cyber {
+  background: var(--accent);
+  color: #07070A;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.btn-cyber:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-cyber-outline {
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-cyber-outline:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}

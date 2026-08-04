@@ -1,0 +1,58 @@
+# ── Secrets and environment values ───────────────────────────────────────────
+# D34/D37: no environment values, anon keys, or service_role keys are ever
+# committed. Only *.example placeholder files are tracked.
+mobile/env/*.json
+!mobile/env/*.json.example
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.p12
+*.keystore
+*.jks
+key.properties
+
+# ── Flutter / Dart ───────────────────────────────────────────────────────────
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.g.dart
+*.freezed.dart
+coverage/
+
+# ── Android ──────────────────────────────────────────────────────────────────
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/android/.kotlin/
+
+# ── iOS ──────────────────────────────────────────────────────────────────────
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/ephemeral/
+mobile/ios/Flutter/flutter_export_environment.sh
+**/*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# ── Supabase ─────────────────────────────────────────────────────────────────
+# Never commit local stack state, generated types, or linked project refs.
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+.DS_Store

@@ -1,0 +1,202 @@
+-- Shared pgTAP fixture: two complete, independent tenants.
+--
+-- Included with `\ir fixtures/two_tenants.psql`. The `.psql` extension keeps
+-- pg_prove from treating it as a test file of its own — it recurses into
+-- subdirectories but only collects `.sql`.
+--
+-- Every tenant-owned table gets at least one row in BOTH arenas, so a
+-- per-table isolation assertion is meaningful: "arena A sees nothing of arena
+-- B" is only worth asserting when arena B actually has something to see
+-- (SECURITY.md §15 assertion 1).
+--
+-- Nothing here is production-shaped. Currencies, timezones, names and rates are
+-- deliberately neutral so no test doubles as a hidden hardcoding of the pilot.
+--
+-- Defines these psql variables for the including test:
+--
+--   arena_a, arena_b                the two tenants
+--   user_a_owner, user_a_staff      members of arena A (owner and staff roles)
+--   user_b_owner                    member of arena B
+--   user_outsider                   authenticated, member of neither
+--
+-- Entity ids are predictable: <prefix>0000000-0000-4000-8000-0000000000NN,
+-- where prefix is 'a' or 'b'. See seed_arena() below for the NN allocation.
+
+\set user_a_owner  'aaaa0000-0000-4000-8000-000000000001'
+\set user_a_staff  'aaaa0000-0000-4000-8000-000000000002'
+\set user_b_owner  'bbbb0000-0000-4000-8000-000000000001'
+\set user_outsider 'cccc0000-0000-4000-8000-000000000001'
+
+insert into auth.users (id, email) values
+  (:'user_a_owner',  'a.owner@arena-os.test'),
+  (:'user_a_staff',  'a.staff@arena-os.test'),
+  (:'user_b_owner',  'b.owner@arena-os.test'),
+  (:'user_outsider', 'outsider@arena-os.test');
+
+insert into public.profiles (id, display_name) values
+  (:'user_a_owner',  'A Owner'),
+  (:'user_a_staff',  'A Staff'),
+  (:'user_b_owner',  'B Owner'),
+  (:'user_outsider', 'Outsider');
+
+insert into public.organizations (id, name) values
+  ('aaaa0000-0000-4000-8000-0000000000f1', 'Organisation One'),
+  ('bbbb0000-0000-4000-8000-0000000000f2', 'Organisation Two');
+
+select public.provision_arena(
+  'aaaa0000-0000-4000-8000-0000000000f1', 'Arena A', 'UTC', 'USD', '+1',
+  :'user_a_owner'
+) as arena_a \gset
+
+select public.provision_arena(
+  'bbbb0000-0000-4000-8000-0000000000f2', 'Arena B', 'Europe/Berlin', 'EUR', '+49',
+  :'user_b_owner'
+) as arena_b \gset
+
+-- A second user in arena A holding the seeded `staff` role, so permission
+-- assertions have a caller who is a legitimate member but lacks report.view.
+insert into public.arena_users (arena_id, user_id, role_id)
+select :'arena_a', :'user_a_staff', r.id
+  from public.roles r
+ where r.arena_id = :'arena_a' and r.code = 'staff';
+
+create function pg_temp.seed_arena(p_arena_id uuid, p_prefix text, p_actor uuid)
+returns void
+language plpgsql
+as $seed$
+declare
+  v_id            text := p_prefix || '0000000-0000-4000-8000-00000000000';
+  v_zone_id       uuid;
+  v_business_date date := app.business_date(p_arena_id, now());
+  v_dial          text;
+begin
+  select z.id into v_zone_id
+    from public.zones z where z.arena_id = p_arena_id limit 1;
+  select s.default_phone_dial_code into v_dial
+    from public.arena_settings s where s.arena_id = p_arena_id;
+
+  -- 01 station type · 02 station · 03 game
+  insert into public.station_types (id, arena_id, code, name)
+  values ((v_id || '1')::uuid, p_arena_id, 'type_one', 'Type One');
+
+  insert into public.stations (id, arena_id, zone_id, station_type_id, name)
+  values ((v_id || '2')::uuid, p_arena_id, v_zone_id, (v_id || '1')::uuid, 'Station One');
+
+  insert into public.games (id, arena_id, title)
+  values ((v_id || '3')::uuid, p_arena_id, 'Game One');
+
+  -- 04 tax rate · 05,06 its two components (the sum is trigger-maintained)
+  insert into public.tax_rates (id, arena_id, name)
+  values ((v_id || '4')::uuid, p_arena_id, 'Standard rate');
+
+  insert into public.tax_rate_components (id, arena_id, tax_rate_id, name, percent, sort_order)
+  values ((v_id || '5')::uuid, p_arena_id, (v_id || '4')::uuid, 'Part one', 6.00, 1),
+         ((v_id || '6')::uuid, p_arena_id, (v_id || '4')::uuid, 'Part two', 4.00, 2);
+
+  -- 07 open-time plan · 08 fixed-duration plan
+  insert into public.billing_plans
+    (id, arena_id, station_type_id, name, type, hourly_rate,
+     grace_minutes, minimum_billable_minutes, rounding_increment_minutes, rounding_mode)
+  values ((v_id || '7')::uuid, p_arena_id, (v_id || '1')::uuid, 'Hourly plan', 'open_time', 100.00,
+          5, 30, 15, 'up');
+
+  insert into public.billing_plans
+    (id, arena_id, name, type, duration_minutes, fixed_price, grace_minutes)
+  values ((v_id || '8')::uuid, p_arena_id, 'Package plan', 'fixed_duration', 60, 200.00, 5);
+
+  -- 09 product
+  insert into public.products (id, arena_id, name, sku, selling_price, tax_rate_id)
+  values ((v_id || '9')::uuid, p_arena_id, 'Product One', 'SKU-1', 50.00, (v_id || '4')::uuid);
+
+  -- 10 member (canonical E.164 for this arena's dial code)
+  insert into public.members (id, arena_id, full_name, phone, created_by_user_id)
+  values ((v_id || 'a')::uuid, p_arena_id, 'Member One',
+          app.normalise_phone(p_arena_id, '5550001234'), p_actor);
+
+  -- 11 open shift
+  insert into public.shifts
+    (id, arena_id, business_date, status, opened_by_user_id, opened_at, opening_float)
+  values ((v_id || 'b')::uuid, p_arena_id, v_business_date, 'open', p_actor, now(), 100.00);
+
+  -- 12 active session on the only station
+  insert into public.sessions
+    (id, arena_id, station_id, member_id, game_id, billing_plan_id, opened_in_shift_id,
+     status, started_by_user_id, started_at, pricing_snapshot, business_date)
+  values ((v_id || 'c')::uuid, p_arena_id, (v_id || '2')::uuid, (v_id || 'a')::uuid,
+          (v_id || '3')::uuid, (v_id || '7')::uuid, (v_id || 'b')::uuid,
+          'active', p_actor, now(),
+          jsonb_build_object(
+            'schema_version', 1,
+            'billing_plan', jsonb_build_object('type', 'open_time', 'hourly_rate', '100.00'),
+            'billing_policy', jsonb_build_object(
+              'grace_minutes', 5, 'minimum_billable_minutes', 30,
+              'rounding_increment_minutes', 15, 'rounding_mode', 'up')
+          ),
+          v_business_date);
+
+  -- 13 open order for that session · 14 its play line
+  insert into public.orders
+    (id, arena_id, session_id, member_id, status, subtotal, tax_total, total,
+     opened_by_user_id, business_date)
+  values ((v_id || 'd')::uuid, p_arena_id, (v_id || 'c')::uuid, (v_id || 'a')::uuid,
+          'open', 100.00, 10.00, 100.00, p_actor, v_business_date);
+
+  insert into public.order_items
+    (id, arena_id, order_id, type, session_id, name_snapshot, quantity, unit_price,
+     line_subtotal, taxable_amount, tax_rate_id, tax_rate_snapshot, tax_amount, line_total)
+  values ((v_id || 'e')::uuid, p_arena_id, (v_id || 'd')::uuid, 'play', (v_id || 'c')::uuid,
+          'Hourly plan', 1, 100.00, 100.00, 90.91, (v_id || '4')::uuid,
+          jsonb_build_object('schema_version', 1, 'percent', '10.00', 'inclusive', true),
+          9.09, 100.00);
+
+  -- 15 payment against that order, owned by the open shift (D08)
+  insert into public.payments
+    (id, arena_id, order_id, shift_id, method, amount, actor_user_id, business_date)
+  values ((v_id || 'f')::uuid, p_arena_id, (v_id || 'd')::uuid, (v_id || 'b')::uuid,
+          'cash', 100.00, p_actor, v_business_date);
+
+  -- 16 opening stock movement, which materialises product_stock by trigger
+  insert into public.inventory_movements
+    (id, arena_id, product_id, type, quantity, actor_user_id, business_date)
+  values ((p_prefix || '0000000-0000-4000-8000-0000000000f0')::uuid, p_arena_id,
+          (v_id || '9')::uuid, 'opening', 10.000, p_actor, v_business_date);
+
+  -- 17 device · 18 an idempotency claim · plus one audit row
+  insert into public.devices (id, arena_id, name, platform, registered_by_user_id)
+  values ((p_prefix || '0000000-0000-4000-8000-0000000000f1')::uuid, p_arena_id,
+          'Counter tablet', 'android', p_actor);
+
+  insert into public.idempotency_keys
+    (arena_id, key, operation, request_fingerprint, status, actor_user_id, response)
+  values (p_arena_id, p_prefix || '-seed-key', 'session_start', 'fingerprint-1',
+          'succeeded', p_actor, jsonb_build_object('ok', true));
+
+  insert into public.audit_logs
+    (arena_id, actor_user_id, action, entity_type, entity_id, business_date)
+  values (p_arena_id, p_actor, 'session.started', 'session', (v_id || 'c')::uuid, v_business_date);
+
+  -- A counter row so receipt_counters is non-empty in both arenas. Written
+  -- directly, under a series name no test configures, so a test that exercises
+  -- app.next_receipt_number still starts its own series at 1.
+  insert into public.receipt_counters (arena_id, series, next_number)
+  values (p_arena_id, 'seed-series', 7);
+end;
+$seed$;
+
+select pg_temp.seed_arena(:'arena_a', 'a', :'user_a_owner');
+select pg_temp.seed_arena(:'arena_b', 'b', :'user_b_owner');
+
+-- Switch the session to an authenticated caller. `reset role` returns to
+-- postgres when a test needs to insert more fixture data.
+create function pg_temp.become(p_user_id uuid)
+returns void
+language plpgsql
+as $become$
+begin
+  perform set_config(
+    'request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    true
+  );
+end;
+$become$;

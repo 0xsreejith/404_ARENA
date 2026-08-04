@@ -1,0 +1,35 @@
+name: arena_os
+description: "Arena OS — multi-tenant gaming-centre management, staff and manager application."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.0
+
+# Dependency policy (CLAUDE.md, D24, D25):
+#
+#   * supabase_flutter is the ONLY transport. Dio is not a dependency and must
+#     not be added — there is no separate REST backend.
+#   * Riverpod 3 is the only state-management package. No Bloc, GetX, or
+#     package:provider.
+#   * Packages are added by the milestone that uses them, not before.
+#     Deferred on purpose: drift + sqlite3_flutter_libs (M3 cache and outbox),
+#     go_router (M2 routing), freezed + json_serializable (M2+ domain models),
+#     flutter_secure_storage (M2 session storage), firebase_messaging
+#     (post-MVP, D28). Adding them now would be dead weight with no call sites.
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.0.0
+  go_router: ^17.3.0
+  google_fonts: ^8.2.1
+  shared_preferences: ^2.5.5
+  supabase_flutter: ^2.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
