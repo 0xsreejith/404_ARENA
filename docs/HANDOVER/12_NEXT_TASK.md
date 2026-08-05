@@ -34,12 +34,15 @@ Order derived **only** from current repo plans (`IMPLEMENTATION_PLAN.md`, `docs/
 
 ---
 
-## Epic 10 — Members P0 (M5)
+## Epic 10 — Members P0 (M5) — **shipped 2026-08-05**
 
-1. RPCs: search/get/create/update/set_blocked (no client SELECT)  
-2. Flutter Members (no coins)  
-3. Replace Web member fixtures  
-4. Phone E.164 via `app.normalise_phone`  
+1. RPCs: search/get/create/update/set_blocked (no client SELECT) ✅  
+2. Flutter Members (+ wallet/loyalty/notes when present) ✅  
+3. Replace Web member fixtures ✅  
+4. Phone E.164 via `app.normalise_phone` ✅  
+5. CRM depth + wallet/loyalty/memberships (Waves B/C) ✅  
+
+**Next focus:** Epic 11 Inventory P0, or Owner catalogue CRUD.
 
 ---
 

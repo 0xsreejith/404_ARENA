@@ -16,6 +16,9 @@ String firstPermittedPath(List<String> permissions) {
   if (permissions.contains('session.view') || permissions.contains('station.view')) {
     return '/floor';
   }
+  if (permissions.contains('member.view')) {
+    return '/members';
+  }
   if (permissions.contains('shift.view')) {
     return '/shift';
   }

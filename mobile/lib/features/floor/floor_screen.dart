@@ -4,6 +4,7 @@ import 'package:arena_os/features/floor/floor_controller.dart';
 import 'package:arena_os/features/floor/floor_repository.dart';
 import 'package:arena_os/features/lobby_ui/lobby_fonts.dart';
 import 'package:arena_os/features/lobby_ui/widgets/station_card.dart';
+import 'package:arena_os/features/members/members_repository.dart';
 import 'package:arena_os/features/tenant/tenant_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +55,11 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
 
     String selectedPlanId = billingPlans.first['id'] as String;
     int playerCount = 1;
+    String? selectedMemberId;
+    String? selectedMemberName;
+    var memberHits = <Map<String, dynamic>>[];
+    var memberQuery = '';
+    var searchingMembers = false;
 
     showDialog<void>(
       context: context,
@@ -89,6 +95,114 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 12),
+                Text(
+                  'WHO (OPTIONAL)',
+                  style: LobbyFonts.mono(
+                    color: Color(0x73E8EAF0),
+                    size: 11,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  style: LobbyFonts.body(color: Colors.white, size: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Search member phone or name',
+                    hintStyle: LobbyFonts.body(color: Color(0x73E8EAF0), size: 13),
+                    filled: true,
+                    fillColor: const Color(0xFF181B22),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0x14FFFFFF)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: tenantState.primaryColor),
+                    ),
+                  ),
+                  onChanged: (q) async {
+                    memberQuery = q;
+                    if (q.trim().length < 3) {
+                      setDialogState(() {
+                        memberHits = [];
+                        searchingMembers = false;
+                      });
+                      return;
+                    }
+                    setDialogState(() => searchingMembers = true);
+                    try {
+                      final hits = await ref.read(membersRepositoryProvider).search(
+                            arenaId: arenaId,
+                            query: q.trim(),
+                            limit: 6,
+                          );
+                      if (memberQuery == q) {
+                        setDialogState(() {
+                          memberHits = hits;
+                          searchingMembers = false;
+                        });
+                      }
+                    } catch (_) {
+                      if (memberQuery == q) {
+                        setDialogState(() {
+                          memberHits = [];
+                          searchingMembers = false;
+                        });
+                      }
+                    }
+                  },
+                ),
+                if (selectedMemberName != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Selected: $selectedMemberName',
+                          style: LobbyFonts.body(
+                            color: tenantState.primaryColor,
+                            size: 13,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          selectedMemberId = null;
+                          selectedMemberName = null;
+                        }),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                ],
+                if (searchingMembers)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                for (final hit in memberHits)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      hit['full_name'] as String? ?? '—',
+                      style: LobbyFonts.body(color: Colors.white, size: 13),
+                    ),
+                    subtitle: Text(
+                      (hit['phone_masked'] ?? hit['phone'] ?? '') as String,
+                      style: LobbyFonts.mono(color: Color(0x73E8EAF0), size: 11),
+                    ),
+                    onTap: () => setDialogState(() {
+                      selectedMemberId = hit['id'] as String?;
+                      selectedMemberName = hit['full_name'] as String?;
+                      memberHits = [];
+                    }),
+                  ),
+                const SizedBox(height: 16),
                 Text(
                   'SELECT BILLING PLAN',
                   style: LobbyFonts.mono(
@@ -239,6 +353,7 @@ class _FloorScreenState extends ConsumerState<FloorScreen> {
                             stationId: station.id,
                             billingPlanId: selectedPlanId,
                             playerCount: playerCount,
+                            memberId: selectedMemberId,
                           );
                           await ref
                               .read(floorControllerProvider.notifier)

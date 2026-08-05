@@ -259,19 +259,30 @@ Voiding a **settled** order is a refund — post-MVP (D28).
 
 `members` has no direct client read path (`SECURITY.md` §8).
 
+**Shipped (Epic 10 Waves A–C, 2026-08-05):** P0 RPCs below plus CRM
+`member_timeline`, `member_note_add` / `member_note_list`, `member_tag_set`,
+`member_profile_update`, `member_analytics_overview`, wallet
+(`wallet_topup` / `wallet_debit` / `wallet_refund` / `wallet_history`),
+loyalty (`loyalty_balance` / `loyalty_adjust`), memberships
+(`membership_plan_list` / `membership_plan_upsert` / `membership_subscribe` /
+`membership_cancel`), and `order_settle` method `wallet` with loyalty earn.
+Stub: `insights_members` → `not_implemented`.
+
 ### `member_search(p_arena_id, p_query, p_limit)` — read
 
 Permission: `member.view`. Requires `length(trim(p_query)) >= 3`. `p_limit`
 capped at 20. A numeric query is normalised the same way as on create before
 matching, so a staff member can search `9876543210` and find `+919876543210`.
-Matches phone prefix and name trigram. Returns id, display name, masked phone,
-and blocked flag.
+Matches phone, name, member_code, whatsapp, email, nickname. Returns id,
+display name, masked phone, blocked flag, and light stats when present.
 
 ### `member_get(p_arena_id, p_member_id)` — read
 
-Permission: `member.view`. Returns the full member plus their last 10 sessions.
+Permission: `member.view`. Returns the full member plus profile, tags, stats,
+wallet/loyalty/membership summaries, outstanding open-order balance, and last
+10 sessions.
 
-### `member_create(p_arena_id, p_member_id, p_full_name, p_phone, p_dob, p_idempotency_key)`
+### `member_create(p_arena_id, p_member_id, p_full_name, p_phone, p_dob, p_notes, p_idempotency_key)`
 
 Permission: `member.create`. Normalises `p_phone` to canonical E.164 via
 `app.normalise_phone` using the arena's `default_phone_dial_code` (D36) —

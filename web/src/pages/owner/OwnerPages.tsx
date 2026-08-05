@@ -1,21 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useOwnerNav } from '../../components/owner/OwnerShell';
+import { useAuth } from '../../context/AuthContext';
 import {
   FIXTURE_EXPENSES,
   FIXTURE_GAMES,
   FIXTURE_INTEGRATIONS,
-  FIXTURE_MEMBERS,
-  FIXTURE_PLANS,
   FIXTURE_PRODUCTS,
   FIXTURE_SESSIONS,
   FIXTURE_STAFF,
-  FIXTURE_VISITS,
   dailyBars,
   heatRows,
   initials,
   payMix,
   zoneRows,
 } from '../../data/ownerFixtures';
+import {
+  createMember,
+  fetchMemberAnalytics,
+  getMember,
+  listMembershipPlans,
+  MemberRecord,
+  MemberSearchRow,
+  readableMemberError,
+  searchMembers,
+  setMemberBlocked,
+  walletTopup,
+} from '../../services/members';
 import { inr } from '../../theme/tokens';
 
 export const ReportsPage: React.FC = () => {
@@ -251,7 +261,7 @@ export const ReportsPage: React.FC = () => {
           <span style={{ fontWeight: 700, fontSize: 15 }}>{tab === 'members' ? 'Member cohort' : 'Staff on shift'}</span>
           <p style={{ marginTop: 12, fontSize: 13.5, color: 'var(--ow-muted)', maxWidth: 560 }}>
             {tab === 'members'
-              ? 'Visit frequency, spend bands and lapse risk will bind to member_* RPCs (Epic 10). Layout matches W2 Members tab.'
+              ? 'Use Members / Memberships screens for live CRM analytics (member_analytics_overview). This reports tab remains a layout placeholder for cohort charts.'
               : 'Hours worked and cash handled will bind to shift summary RPCs. Layout matches W2 Staff tab.'}
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 16 }}>
@@ -372,102 +382,128 @@ export const SessionsPage: React.FC = () => {
 
 export const MembersPage: React.FC = () => {
   const { T, openMember, toast } = useOwnerNav();
+  const { selectedArena, hasPermission } = useAuth();
   const [q, setQ] = useState('');
   const [filt, setFilt] = useState('all');
+  const [rows, setRows] = useState<MemberSearchRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [topSpend, setTopSpend] = useState<MemberSearchRow[]>([]);
 
-  const rows = FIXTURE_MEMBERS.filter((m) => {
-    if (filt === 'gold' && m.plan !== 'GOLD') return false;
+  useEffect(() => {
+    if (!selectedArena?.id || !hasPermission('member.view')) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const analytics = await fetchMemberAnalytics(selectedArena.id);
+        if (!cancelled) setTopSpend((analytics.top_spend as MemberSearchRow[]) || []);
+      } catch {
+        /* analytics optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedArena?.id, hasPermission]);
+
+  useEffect(() => {
+    if (!selectedArena?.id || !hasPermission('member.view')) return;
+    if (q.trim().length < 3) {
+      setRows(filt === 'all' ? topSpend.slice(0, 20) : []);
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setLoading(true);
+      void searchMembers(selectedArena.id, q.trim())
+        .then((data) => {
+          if (!cancelled) {
+            setRows(data);
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) setError(readableMemberError(err, 'Search failed'));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [q, selectedArena?.id, hasPermission, topSpend, filt]);
+
+  const visible = rows.filter((m) => {
     if (filt === 'blocked' && !m.blocked) return false;
-    if (filt === 'lapse' && !(m.expDays != null && m.expDays <= 7)) return false;
-    if (!q) return true;
-    const s = q.toLowerCase();
-    return m.name.toLowerCase().includes(s) || m.phone.includes(s);
+    return true;
   });
+
+  const onAdd = async () => {
+    if (!selectedArena?.id || !hasPermission('member.create')) {
+      toast('Permission required', 'member.create');
+      return;
+    }
+    const fullName = window.prompt('Full name');
+    if (!fullName?.trim()) return;
+    const phone = window.prompt('Phone');
+    if (!phone?.trim()) return;
+    try {
+      const created = await createMember({
+        arenaId: selectedArena.id,
+        memberId: crypto.randomUUID(),
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        idempotencyKey: crypto.randomUUID(),
+      });
+      toast('Member created', created.full_name);
+      openMember(created.id);
+    } catch (err) {
+      toast('Create failed', readableMemberError(err, 'Unable to create'));
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-        <input className="ow-field" style={{ width: 280 }} placeholder="Search phone or name" value={q} onChange={(e) => setQ(e.target.value)} />
-        {(
-          [
-            ['all', 'All'],
-            ['gold', 'Gold'],
-            ['lapse', 'Lapsing'],
-            ['blocked', 'Blocked'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className="ow-btn"
-            style={{
-              height: 34,
-              padding: '0 14px',
-              background: filt === id ? T.accTint : T.panel,
-              color: filt === id ? T.accInk : T.ink2b,
-              border: `1px solid ${filt === id ? T.accBd : T.bd}`,
-            }}
-            onClick={() => setFilt(id)}
-          >
+        <input className="ow-field" style={{ width: 280 }} placeholder="Search phone or name (min 3)" value={q} onChange={(e) => setQ(e.target.value)} />
+        {([['all', 'All'], ['blocked', 'Blocked']] as const).map(([id, label]) => (
+          <button key={id} type="button" className="ow-btn" style={{ height: 34, padding: '0 14px', background: filt === id ? T.accTint : T.panel, color: filt === id ? T.accInk : T.ink2b, border: `1px solid ${filt === id ? T.accBd : T.bd}` }} onClick={() => setFilt(id)}>
             {label}
           </button>
         ))}
         <span style={{ flex: 1 }} />
-        <button type="button" className="ow-btn ow-btn-accent" onClick={() => toast('Add member', 'Opens when member_create RPC ships')}>
-          Add member
-        </button>
+        <button type="button" className="ow-btn ow-btn-accent" onClick={() => void onAdd()}>Add member</button>
       </div>
+      {error && <div style={{ color: T.danger, fontSize: 13 }}>{error}</div>}
+      {loading && <div style={{ fontSize: 13, color: 'var(--ow-muted)' }}>Searching…</div>}
       <div className="ow-table">
-        <div className="ow-table-head" style={{ gridTemplateColumns: '1.5fr 130px 150px 84px 104px 84px 120px' }}>
-          {['MEMBER', 'PHONE', 'PLAN', 'VISITS', 'SPEND', 'COINS', 'LAST'].map((c, i) => (
-            <span key={c} style={{ textAlign: i >= 3 ? 'right' : 'left' }}>
-              {c}
-            </span>
+        <div className="ow-table-head" style={{ gridTemplateColumns: '1.5fr 130px 84px 104px 120px' }}>
+          {['MEMBER', 'PHONE', 'VISITS', 'SPEND', 'LAST'].map((c, i) => (
+            <span key={c} style={{ textAlign: i >= 2 ? 'right' : 'left' }}>{c}</span>
           ))}
         </div>
-        {rows.map((m) => (
-          <div
-            key={m.id}
-            className="ow-table-row"
-            style={{ gridTemplateColumns: '1.5fr 130px 150px 84px 104px 84px 120px' }}
-            onClick={() => openMember(m.id)}
-          >
+        {visible.map((m) => (
+          <div key={m.id} className="ow-table-row" style={{ gridTemplateColumns: '1.5fr 130px 84px 104px 120px' }} onClick={() => openMember(m.id)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-              <span className="ow-avatar" style={{ width: 30, height: 30, fontSize: 10.5, background: m.blocked ? T.dangerTint : T.accTint, color: m.blocked ? T.danger : T.accent }}>
-                {initials(m.name)}
-              </span>
+              <span className="ow-avatar" style={{ width: 30, height: 30, fontSize: 10.5, background: m.blocked ? T.dangerTint : T.accTint, color: m.blocked ? T.danger : T.accent }}>{initials(m.full_name)}</span>
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: m.blocked ? T.danger : T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {m.name}
-                </span>
-                <span style={{ fontSize: 11.5, color: 'var(--ow-faint)' }}>{m.blocked ? 'Blocked' : 'Active'}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: m.blocked ? T.danger : T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--ow-faint)' }}>{m.blocked ? 'Blocked' : m.member_code || 'Active'}</span>
               </div>
             </div>
-            <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-ink3)' }}>
-              {m.phone}
-            </span>
-            <span
-              className="ow-chip"
-              style={{
-                background: m.plan === 'WALK-IN' ? T.chip : T.posTint,
-                color: m.plan === 'WALK-IN' ? T.ink3 : T.posInk3,
-                justifySelf: 'start',
-              }}
-            >
-              {m.plan}
-            </span>
-            <span className="ow-mono" style={{ fontSize: 13, textAlign: 'right' }}>
-              {m.visits}
-            </span>
-            <span className="ow-mono" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>
-              {inr(m.spend)}
-            </span>
-            <span className="ow-mono" style={{ fontSize: 13, textAlign: 'right', color: 'var(--ow-warn)' }}>
-              {m.coins}
-            </span>
-            <span style={{ fontSize: 12.5, color: 'var(--ow-faint)', textAlign: 'right' }}>{m.last}</span>
+            <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-ink3)' }}>{m.phone_masked || m.phone}</span>
+            <span className="ow-mono" style={{ fontSize: 13, textAlign: 'right' }}>{m.visit_count ?? '—'}</span>
+            <span className="ow-mono" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{m.total_spend != null ? String(m.total_spend) : '—'}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--ow-faint)', textAlign: 'right' }}>{m.last_visit_at ? String(m.last_visit_at).slice(0, 10) : '—'}</span>
           </div>
         ))}
+        {!loading && visible.length === 0 && (
+          <div style={{ padding: 24, color: 'var(--ow-muted)', fontSize: 13 }}>
+            {q.trim().length < 3 ? 'Type at least 3 characters to search, or browse top spenders.' : 'No members match.'}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -475,48 +511,81 @@ export const MembersPage: React.FC = () => {
 
 export const MemberRecordPage: React.FC = () => {
   const { selectedMemberId, setScreen, toast, T } = useOwnerNav();
-  const m = FIXTURE_MEMBERS.find((x) => x.id === selectedMemberId) || FIXTURE_MEMBERS[0];
+  const { selectedArena, hasPermission } = useAuth();
+  const [m, setM] = useState<MemberRecord | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    if (!selectedArena?.id || !selectedMemberId || !hasPermission('member.view')) return;
+    let cancelled = false;
+    setLoading(true);
+    void getMember(selectedArena.id, selectedMemberId)
+      .then((data) => { if (!cancelled) setM(data); })
+      .catch((err) => { if (!cancelled) toast('Load failed', readableMemberError(err, 'Unable to load member')); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedArena?.id, selectedMemberId, hasPermission, toast]);
+
+  if (loading || !m) {
+    return <div style={{ padding: 24, color: 'var(--ow-muted)' }}>{loading ? 'Loading…' : 'Member not found'}</div>;
+  }
+
+  const stats = m.stats || {};
+  const loyalty = m.loyalty || {};
+  const membership = m.membership;
+  const sessions = m.recent_sessions || [];
   const tiles = [
-    { label: 'Membership', value: m.plan === 'WALK-IN' ? 'None' : m.plan, sub: m.expDays != null ? `${m.expDays} days left` : 'Walk-in pricing', fg: m.plan === 'WALK-IN' ? T.ink3 : T.posInk3 },
-    { label: 'Lifetime', value: String(m.visits), sub: 'Lifetime recorded', fg: T.ink },
-    { label: 'Lifetime spend', value: inr(m.spend), sub: 'Lifetime play + snacks', fg: T.ink },
-    { label: 'Coins', value: String(m.coins), sub: 'Adjustable on counter', fg: T.warn },
+    { label: 'Membership', value: membership?.plan_name || 'None', sub: membership?.ends_at ? `Ends ${String(membership.ends_at).slice(0, 10)}` : 'Walk-in pricing', fg: membership ? T.posInk3 : T.ink3 },
+    { label: 'Lifetime', value: String(stats.visit_count ?? 0), sub: 'Visits recorded', fg: T.ink },
+    { label: 'Lifetime spend', value: String(stats.total_spend ?? '0.00'), sub: 'Settled orders', fg: T.ink },
+    { label: 'Wallet / loyalty', value: `${m.wallet_balance ?? '0.00'} / ${loyalty.points ?? 0}`, sub: (loyalty.tier as { label?: string } | null | undefined)?.label || 'Tier', fg: T.warn },
   ];
+
+  const onBlock = async () => {
+    if (!selectedArena?.id || !hasPermission('member.block')) { toast('Permission required', 'member.block'); return; }
+    const next = !m.blocked;
+    let reason: string | undefined;
+    if (next) { reason = window.prompt('Block reason') || undefined; if (!reason?.trim()) return; }
+    try {
+      const updated = await setMemberBlocked({ arenaId: selectedArena.id, memberId: m.id, blocked: next, reason });
+      setM((prev) => (prev ? { ...prev, ...updated } : updated));
+      toast(next ? 'Blocked' : 'Unblocked', m.full_name);
+    } catch (err) {
+      toast('Failed', readableMemberError(err, 'Unable to update block'));
+    }
+  };
+
+  const onTopup = async () => {
+    if (!selectedArena?.id || !hasPermission('member.wallet')) { toast('Permission required', 'member.wallet'); return; }
+    const amount = window.prompt('Top-up amount');
+    if (!amount?.trim()) return;
+    try {
+      await walletTopup({ arenaId: selectedArena.id, memberId: m.id, amount: amount.trim() });
+      setM(await getMember(selectedArena.id, m.id));
+      toast('Wallet topped up', amount);
+    } catch (err) {
+      toast('Top-up failed', readableMemberError(err, 'Unable to top up'));
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <button type="button" className="ow-link" onClick={() => setScreen('members')} style={{ width: 'fit-content' }}>
-        ← All members
-      </button>
+      <button type="button" className="ow-link" onClick={() => setScreen('members')} style={{ width: 'fit-content' }}>← All members</button>
       <div className="ow-panel" style={{ padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span className="ow-avatar" style={{ width: 54, height: 54, fontSize: 16 }}>
-          {initials(m.name)}
-        </span>
+        <span className="ow-avatar" style={{ width: 54, height: 54, fontSize: 16 }}>{initials(m.full_name)}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-0.015em' }}>{m.name}</span>
-          <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-muted)' }}>
-            {m.phone} · JOINED {m.joined}
-          </span>
+          <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-0.015em' }}>{m.full_name}</span>
+          <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-muted)' }}>{m.phone} · {m.member_code || '—'}</span>
         </div>
         <span style={{ flex: 1 }} />
-        <button type="button" className="ow-btn ow-btn-accent" onClick={() => toast('Renew queued')}>
-          Renew membership
-        </button>
-        <button type="button" className="ow-btn ow-btn-ghost" onClick={() => toast('Coin adjust', 'Deferred until CRM coins')}>
-          Adjust coins
-        </button>
-        <button type="button" className="ow-btn ow-btn-danger" onClick={() => toast(m.blocked ? 'Unblock' : 'Block', m.name)}>
-          {m.blocked ? 'Unblock' : 'Block'}
-        </button>
+        <button type="button" className="ow-btn ow-btn-accent" onClick={() => void onTopup()}>Wallet top-up</button>
+        <button type="button" className="ow-btn ow-btn-danger" onClick={() => void onBlock()}>{m.blocked ? 'Unblock' : 'Block'}</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
         {tiles.map((t) => (
           <div key={t.label} className="ow-kpi" style={{ gap: 5, padding: '15px 18px' }}>
             <span className="ow-kpi-label">{t.label}</span>
-            <span className="ow-kpi-value" style={{ fontSize: 23, color: t.fg }}>
-              {t.value}
-            </span>
+            <span className="ow-kpi-value" style={{ fontSize: 23, color: t.fg }}>{t.value}</span>
             <span className="ow-kpi-sub">{t.sub}</span>
           </div>
         ))}
@@ -524,55 +593,24 @@ export const MemberRecordPage: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14, alignItems: 'start' }}>
         <div className="ow-panel">
           <span style={{ fontWeight: 700, fontSize: 15 }}>Recent visits</span>
-          {FIXTURE_VISITS.map((v) => (
-            <div
-              key={v.date + v.station}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '110px 90px 1fr 90px 80px',
-                gap: 12,
-                padding: '12px 0',
-                borderTop: '1px solid var(--ow-hair)',
-                marginTop: 8,
-                alignItems: 'center',
-              }}
-            >
-              <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-ink3)' }}>
-                {v.date}
-              </span>
-              <span className="ow-mono" style={{ fontSize: 12.5, fontWeight: 700 }}>
-                {v.station}
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--ow-ink3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {v.title}
-              </span>
-              <span className="ow-mono" style={{ fontSize: 12.5, textAlign: 'right', color: 'var(--ow-ink3)' }}>
-                {v.length}
-              </span>
-              <span className="ow-mono" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>
-                {v.amount}
-              </span>
+          {sessions.map((v) => (
+            <div key={String(v.id)} style={{ display: 'grid', gridTemplateColumns: '110px 90px 1fr 90px', gap: 12, padding: '12px 0', borderTop: '1px solid var(--ow-hair)', marginTop: 8, alignItems: 'center' }}>
+              <span className="ow-mono" style={{ fontSize: 12.5, color: 'var(--ow-ink3)' }}>{String(v.started_at || '').slice(0, 10)}</span>
+              <span className="ow-mono" style={{ fontSize: 12.5, fontWeight: 700 }}>{String(v.station_name || '—')}</span>
+              <span style={{ fontSize: 13, color: 'var(--ow-ink3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v.game_title || '')}</span>
+              <span className="ow-mono" style={{ fontSize: 12.5, textAlign: 'right', color: 'var(--ow-ink3)' }}>{String(v.status || '')}</span>
             </div>
           ))}
+          {sessions.length === 0 && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--ow-muted)' }}>No recent sessions.</p>}
         </div>
         <div className="ow-panel">
-          <span style={{ fontWeight: 700, fontSize: 15 }}>ID & consent</span>
-          {[
-            ['Govt ID', 'Aadhaar · ****4521'],
-            ['Consent', 'Signed on tablet'],
-            ['Guardian', '—'],
-            ['Notes', 'Prefers PS-02'],
-          ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '11px 0', borderTop: '1px solid var(--ow-hair)', marginTop: 8 }}>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Profile</span>
+          {[['Outstanding', m.outstanding_balance || '0.00'], ['Notes', m.notes || '—'], ['Tags', (m.tags || []).map((t) => t.label).join(', ') || '—'], ['Blocked', m.blocked ? m.blocked_reason || 'Yes' : 'No']].map(([k, v]) => (
+            <div key={String(k)} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '11px 0', borderTop: '1px solid var(--ow-hair)', marginTop: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--ow-muted)', flex: 1 }}>{k}</span>
-              <span className="ow-mono" style={{ fontSize: 12.5, fontWeight: 600 }}>
-                {v}
-              </span>
+              <span className="ow-mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{v}</span>
             </div>
           ))}
-          <span style={{ display: 'block', fontSize: 12, color: 'var(--ow-faint)', paddingTop: 12 }}>
-            Only the last four digits are stored. Full ID images are never uploaded.
-          </span>
         </div>
       </div>
     </div>
@@ -580,59 +618,66 @@ export const MemberRecordPage: React.FC = () => {
 };
 
 export const MembershipsPage: React.FC = () => {
-  const { T, openMember } = useOwnerNav();
-  const lapsing = FIXTURE_MEMBERS.filter((m) => m.expDays != null && m.expDays <= 7);
+  const { T, openMember, toast } = useOwnerNav();
+  const { selectedArena, hasPermission } = useAuth();
+  const [plans, setPlans] = useState<Array<Record<string, unknown>>>([]);
+  const [lapse, setLapse] = useState<MemberSearchRow[]>([]);
+
+  useEffect(() => {
+    if (!selectedArena?.id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (hasPermission('membership.manage')) {
+          const list = await listMembershipPlans(selectedArena.id);
+          if (!cancelled) setPlans(list as Array<Record<string, unknown>>);
+        }
+        if (hasPermission('member.view')) {
+          const analytics = await fetchMemberAnalytics(selectedArena.id);
+          if (!cancelled) setLapse((analytics.no_visit_90d as MemberSearchRow[]) || []);
+        }
+      } catch (err) {
+        if (!cancelled) toast('Memberships', readableMemberError(err, 'Unable to load'));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedArena?.id, hasPermission, toast]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        {FIXTURE_PLANS.map((p) => (
-          <div key={p.name} className="ow-panel" style={{ padding: '19px 21px', borderColor: p.active ? T.accBd : T.bd, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {plans.length === 0 && (
+          <div className="ow-panel" style={{ padding: '19px 21px', gridColumn: '1 / -1' }}>
+            <span style={{ fontSize: 13, color: 'var(--ow-muted)' }}>No membership plans yet. Create via membership_plan_upsert.</span>
+          </div>
+        )}
+        {plans.map((p) => (
+          <div key={String(p.id)} className="ow-panel" style={{ padding: '19px 21px', borderColor: p.active ? T.accBd : T.bd, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</span>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>{String(p.name)}</span>
               <span style={{ flex: 1 }} />
-              <span className="ow-chip" style={{ background: p.active ? T.posTint : T.chip, color: p.active ? T.posInk3 : T.ink3 }}>
-                {p.active ? 'ACTIVE' : 'PAUSED'}
-              </span>
+              <span className="ow-chip" style={{ background: p.active ? T.posTint : T.chip, color: p.active ? T.posInk3 : T.ink3 }}>{p.active ? 'ACTIVE' : 'PAUSED'}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="ow-mono" style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-0.02em' }}>
-                {inr(p.price)}
-              </span>
-              <span style={{ fontSize: 12.5, color: 'var(--ow-faint)' }}>/ {p.term}</span>
+              <span className="ow-mono" style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-0.02em' }}>{inr(Number(p.price) || 0)}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--ow-faint)' }}>/ {String(p.period_days)}d</span>
             </div>
-            <span style={{ fontSize: 13, color: 'var(--ow-muted)' }}>{p.perks}</span>
-            <span className="ow-mono" style={{ fontSize: 12, color: 'var(--ow-faint)' }}>
-              {p.holders} holders
-            </span>
           </div>
         ))}
       </div>
       <div className="ow-panel">
-        <span style={{ fontWeight: 700, fontSize: 15 }}>Lapsing within 7 days</span>
-        {lapsing.map((e) => (
-          <div
-            key={e.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => openMember(e.id)}
-            onKeyDown={(ev) => ev.key === 'Enter' && openMember(e.id)}
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 0', borderTop: '1px solid var(--ow-hair)', marginTop: 8 }}
-          >
-            <span className="ow-avatar" style={{ width: 30, height: 30, fontSize: 10.5 }}>
-              {initials(e.name)}
-            </span>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>No visit in 90 days</span>
+        {lapse.map((e) => (
+          <div key={e.id} role="button" tabIndex={0} onClick={() => openMember(e.id)} onKeyDown={(ev) => ev.key === 'Enter' && openMember(e.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 0', borderTop: '1px solid var(--ow-hair)', marginTop: 8 }}>
+            <span className="ow-avatar" style={{ width: 30, height: 30, fontSize: 10.5 }}>{initials(e.full_name)}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{e.name}</div>
-              <div className="ow-mono" style={{ fontSize: 11, color: 'var(--ow-faint)' }}>
-                {e.phone}
-              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{e.full_name}</div>
+              <div className="ow-mono" style={{ fontSize: 11, color: 'var(--ow-faint)' }}>{e.phone_masked || e.phone}</div>
             </div>
-            <span className="ow-chip" style={{ background: T.warnTint, color: T.warn }}>
-              {e.expDays}d
-            </span>
+            <span className="ow-chip" style={{ background: T.warnTint, color: T.warn }}>{e.last_visit_at ? String(e.last_visit_at).slice(0, 10) : 'Never'}</span>
           </div>
         ))}
+        {lapse.length === 0 && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--ow-muted)' }}>No lapse cohort right now.</p>}
       </div>
     </div>
   );

@@ -134,6 +134,14 @@ session, and the loser gets an actionable error. The full lifecycle is audited.
 - Member sessions; blocked-member refusal
 - Restricted device-side member cache
 
+**Progress (2026-08-05 — Epic 10 Waves A–C):** Migrations
+`epic10_members_p0`, `epic10b_crm_depth`, `epic10c_wallet_loyalty` ship
+RPC-only members (D19), CRM spine (`member_profiles` / tags / notes / stats /
+codes), wallet + loyalty ledgers (D21), membership plans, and
+`order_settle` wallet method + loyalty earn. Flutter `/members` + session
+start search; Owner Web Members / Memberships live RPCs. pgTAP
+`20_epic10_members_test.sql`, `21_epic10_crm_wallet_test.sql`.
+
 **Exit:** `authenticated` has no `SELECT` privilege on `members`, member search
 never bulk-downloads, and no member PII appears in any log.
 

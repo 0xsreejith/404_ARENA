@@ -58,13 +58,17 @@ This catalogue lists **domains**. Existing RPCs stay; new ones add. Full param m
 
 ## H. Members / CRM
 
-`member_search` · `member_get` · `member_create` · `member_update` · `member_block` · `member_stats_get` · `member_timeline` · `member_note_add` · `member_document_add`
+**Shipped:** `member_search` · `member_get` · `member_create` · `member_update` · `member_set_blocked` · `member_timeline` · `member_note_add` · `member_note_list` · `member_tag_set` · `member_profile_update` · `member_analytics_overview` · `insights_members` (stub `not_implemented`)
+
+Still open: `member_document_add`
 
 ---
 
 ## I. Memberships / loyalty / wallet
 
-`membership_plan_*` · `membership_subscribe` · `membership_renew` · `membership_cancel` · `loyalty_balance` · `loyalty_adjust` · `wallet_topup` · `wallet_transfer` · `wallet_pay` · `coupon_redeem` · `gift_card_*`
+**Shipped:** `membership_plan_list` · `membership_plan_upsert` · `membership_subscribe` · `membership_cancel` · `loyalty_balance` · `loyalty_adjust` · `wallet_topup` · `wallet_debit` · `wallet_refund` · `wallet_history` · `order_settle` method `wallet`
+
+Still open: `membership_renew` · `wallet_transfer` · `coupon_redeem` · `gift_card_*`
 
 ---
 

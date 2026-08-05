@@ -62,6 +62,12 @@ class _StaffShellState extends ConsumerState<StaffShell> {
         'Open the drawer · expected cash from payments · count before handover',
       );
     }
+    if (location.startsWith('/members')) {
+      return (
+        'Members',
+        'Search by phone or name · open a record to start play or add notes',
+      );
+    }
     return (
       'Floor',
       'Live station state · tap a card to start or manage a session',
@@ -76,6 +82,7 @@ class _StaffShellState extends ConsumerState<StaffShell> {
     final canFloor =
         ref.watch(canProvider('session.view')) || ref.watch(canProvider('station.view'));
     final canShift = ref.watch(canProvider('shift.view'));
+    final canMembers = ref.watch(canProvider('member.view'));
     final location = GoRouterState.of(context).matchedLocation;
     final copy = _headerCopy(location);
 
@@ -108,6 +115,13 @@ class _StaffShellState extends ConsumerState<StaffShell> {
           label: 'FLOOR',
           sub: '$live LIVE',
           active: location.startsWith('/floor') || location.startsWith('/checkout'),
+        ),
+      if (canMembers)
+        _NavDest(
+          path: '/members',
+          label: 'MEMBERS',
+          sub: 'CRM',
+          active: location.startsWith('/members'),
         ),
       if (canShift)
         _NavDest(

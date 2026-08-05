@@ -72,7 +72,9 @@ Status: **Production** = implemented + used by at least one client · **Backend 
 | RPC | Section |
 |---|---|
 | `session_extend`, `session_cancel` | Sessions |
-| `member_search`, `member_get`, `member_create`, `member_update`, `member_set_blocked` | Members |
+| `member_search`, `member_get`, `member_create`, `member_update`, `member_set_blocked` | Members P0 — **shipped** |
+| `member_timeline`, `member_note_*`, `member_tag_set`, `member_profile_update`, `member_analytics_overview` | CRM depth — **shipped** |
+| `wallet_*`, `loyalty_*`, `membership_*` | Wallet / loyalty / plans — **shipped** |
 | `inventory_adjust` | Inventory |
 | `sync_pull`, `outbox_discard` | Sync |
 | `audit_search` | Audit |

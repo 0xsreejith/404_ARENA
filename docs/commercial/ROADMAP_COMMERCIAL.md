@@ -13,8 +13,8 @@
 | **W0** | Foundations | M0–M1 + Epic1–3C done |
 | **W1** | Trading core | M2–M9 staff path: auth, floor UI parity, checkout UX, shift, members P0, inventory P0, offline |
 | **W2** | Owner Web CORE | D26a: dashboard, floor, stations, pricing, tax, staff, settings, reports basic |
-| **W3** | CRM & POS depth | Full CRM fields, refunds, expenses, cash movements, tips, coupons |
-| **W4** | Memberships · Wallet · Loyalty | D28a tables + customer entitlements |
+| **W3** | CRM & POS depth | Full CRM fields, refunds, expenses, cash movements, tips, coupons — **CRM member spine shipped 2026-08-05** (profiles/tags/notes/stats/timeline); POS extras still open |
+| **W4** | Memberships · Wallet · Loyalty | D28a tables + customer entitlements — **shipped 2026-08-05** (plans, wallets, loyalty ledgers, settle hooks) |
 | **W5** | Bookings · Events · Tournaments | Calendar utilisation |
 | **W6** | Customer App + Portal + Website | Member self-serve + acquisition site |
 | **W7** | Hardware agents · Game library · PS5/PC ops | INT |

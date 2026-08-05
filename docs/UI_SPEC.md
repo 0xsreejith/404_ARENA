@@ -225,11 +225,11 @@ explains that billing resumes when connectivity returns.
 - Phone entry accepts a plain 10-digit mobile number and displays it that way.
   Storage is canonical E.164 and normalisation happens **server-side** (D36) —
   the client never decides what the canonical form is
-- Profile: name, phone, blocked state, last 10 sessions
+- Profile: name, phone, blocked state, last 10 sessions, plus CRM stats /
+  notes / timeline when returned by `member_get`
 - Block / unblock with a reason (`member.block`)
-
-No membership, wallet, or coin display in P0 — those concepts do not exist yet
-(D28), so nothing hints at them.
+- Wallet balance, loyalty points/tier, and membership badge are **server
+  fields only** (D28a) — never client-invented
 
 Offline, the Members tab is read-only for cached members and explains why.
 

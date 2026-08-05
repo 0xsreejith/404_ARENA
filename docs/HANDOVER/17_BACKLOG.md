@@ -7,7 +7,8 @@ Grouped by urgency against the **existing** roadmap and code gaps.
 ## Critical (blocks real trading-day pilot / M7)
 
 - Finish Epic 7 — single production Flutter path; live overtime alert; demote lobby demo  
-- Member RPCs + UI (search/create/select on session start) — M5 / Epic 10  
+- Member RPCs + UI (search/create/select on session start) — M5 / Epic 10 — **done 2026-08-05**  
+- CRM profiles/notes/stats + wallet/loyalty/memberships — Epic 10 B/C — **done 2026-08-05**  
 - Inventory receive/adjust + usable snack sell UX — M8 / Epic 11  
 - Offline session start/stop + Sync Issues — M9 / Epic 12  
 - PITR enabled + restore rehearsal on production project — M7 go-live gate  

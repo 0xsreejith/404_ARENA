@@ -84,14 +84,14 @@ Arena OS can run the **core trading path** end-to-end against Supabase (auth →
 ## Missing features (relative to P0 / API.md)
 
 - `session_extend`, `session_cancel`
-- Member RPCs (`member_search/get/create/update/set_blocked`)
+- ~~Member RPCs (`member_search/get/create/update/set_blocked`)~~ **shipped Epic 10**
 - `inventory_adjust` (+ full sell/receive UI)
 - `sync_pull`, `outbox_discard`
 - Admin catalogue CRUD RPCs
 - Split payment / multi-tender settle
 - Offline session start/stop
 - Reports RPCs
-- Membership / wallet / loyalty (intentionally post-MVP / D28a)
+- ~~Membership / wallet / loyalty (intentionally post-MVP / D28a)~~ **shipped Epic 10C**
 - Customer app, Super Admin, portal, website (commercial surfaces — not started)
 
 ---

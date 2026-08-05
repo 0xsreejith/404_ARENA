@@ -4,6 +4,7 @@ import 'package:arena_os/features/auth/login_screen.dart';
 import 'package:arena_os/features/checkout/checkout_screen.dart';
 import 'package:arena_os/features/devices/device_repository.dart';
 import 'package:arena_os/features/floor/floor_screen.dart';
+import 'package:arena_os/features/members/members_screen.dart';
 import 'package:arena_os/features/shell/no_access_screen.dart';
 import 'package:arena_os/features/shell/staff_shell.dart';
 import 'package:arena_os/features/shell/stale_screen.dart';
@@ -75,6 +76,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return '/no-access';
       }
 
+      if (loc == '/members' && !tenant.hasPermission('member.view')) {
+        return '/no-access';
+      }
+
       return null;
     },
     routes: <RouteBase>[
@@ -124,6 +129,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/shift',
             builder: (context, state) => const ShiftScreen(),
+          ),
+          GoRoute(
+            path: '/members',
+            builder: (context, state) => const MembersScreen(),
           ),
           GoRoute(
             path: '/checkout/:orderId',
